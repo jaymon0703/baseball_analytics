@@ -1,0 +1,5 @@
+faicons
+shiny
+seaborn
+pandas
+pybaseball
