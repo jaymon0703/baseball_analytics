@@ -1,19 +1,21 @@
 import seaborn as sns
 from faicons import icon_svg
+import plotly.express as px
+from shinywidgets import render_plotly
 
 # Import data from shared.py
-from shared import app_dir, df, ls_pitchers_2024, create_count_matrix
+from shared import app_dir, ls_pitchers_2024, create_count_matrix
 
 from shiny import reactive
 from shiny.express import input, render, ui
 
-from pybaseball import  playerid_lookup
-from pybaseball import  statcast_pitcher
+from pybaseball import  playerid_lookup, statcast_pitcher, cache
+cache.enable()
 
 ui.page_opts(title="Baseball Analytics Dashboard - 2024", fillable=True)
 
 
-with ui.sidebar(title="Filter controls"):
+with ui.sidebar(title="Filter controls", width=300):
     # ui.input_slider("release_speed", "Release Speed", 0, 110, 110)
 
     ui.input_selectize(
@@ -23,6 +25,8 @@ with ui.sidebar(title="Filter controls"):
         multiple=False,
         selected=None
     )
+
+    ui.input_date_range("date_range", "Date Range", start="2024-01-01", end="2024-12-31")
 
 
 with ui.layout_column_wrap(fill=False):
@@ -50,29 +54,27 @@ with ui.layout_column_wrap(fill=False):
 
 with ui.layout_columns():
     with ui.card(full_screen=True):
-        ui.card_header("Strike Zone Heat Map")
+        ui.card_header("Pitch Movement Scatter Plot")
 
-        @render.plot
-        def length_depth():
-            return sns.heatmap(
-                data=create_count_matrix(strike_zone_df()),
-                cbar=True, 
-                cmap="coolwarm",
-            )
+        @render_plotly
+        def movement_scatter():
+            pfx_x_inches = filtered_df()["pfx_x"] * 12
+            pfx_z_inches = filtered_df()["pfx_z"] * 12
+            fig = px.scatter(filtered_df(), x = pfx_x_inches, y=pfx_z_inches,
+                            color="pitch_name")
+            # fig = px.scatter(x = [1,2,23,4,5], y = [1,2,3,4,5])
+            return fig
 
     with ui.card(full_screen=True):
-        ui.card_header("Penguin data")
+        ui.card_header("Strike Zone Heat Map")
 
-        # @render.data_frame
-        # def summary_statistics():
-        #     cols = [
-        #         "species",
-        #         "island",
-        #         "bill_length_mm",
-        #         "bill_depth_mm",
-        #         "body_mass_g",
-        #     ]
-        #     return render.DataGrid(filtered_df()[cols], filters=True)
+        @render_plotly
+        def heatmap():
+            fig = px.imshow(create_count_matrix(strike_zone_df()),
+                            color_continuous_scale='RdBu_r')
+            fig.update_xaxes(showticklabels=False)
+            fig.update_yaxes(showticklabels=False)
+            return fig
 
 
 ui.include_css(app_dir / "styles.css")
@@ -83,7 +85,7 @@ def filtered_df():
     first_name = input.selected_pitcher().split()[1].lower()
     last_name = input.selected_pitcher().split()[0].lower().replace(',', '')
     player_id = playerid_lookup(last_name, first_name)["key_mlbam"][0]
-    data = statcast_pitcher('2024-01-01', '2024-12-31', player_id = player_id)
+    data = statcast_pitcher(str(input.date_range()[0]), str(input.date_range()[1]), player_id = player_id)
     return data
 
 @reactive.calc

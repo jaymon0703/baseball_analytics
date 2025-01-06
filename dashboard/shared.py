@@ -3,7 +3,6 @@ from pathlib import Path
 import pandas as pd
 
 app_dir = Path(__file__).parent
-df = pd.read_csv(app_dir / "2024_trimmed.csv")
 df_pitchers_2024 = pd.read_csv(app_dir / "2024_pitchers.csv", header=None)
 ls_pitchers_2024 = df_pitchers_2024[0].tolist()
 

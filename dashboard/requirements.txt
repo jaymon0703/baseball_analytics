@@ -3,3 +3,5 @@ shiny
 seaborn
 pandas
 pybaseball
+shinywidgets
+plotly.express
