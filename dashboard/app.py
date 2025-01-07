@@ -28,6 +28,24 @@ with ui.sidebar(title="Filter controls", width=300):
 
     ui.input_date_range("date_range", "Date Range", start="2024-01-01", end="2024-12-31")
 
+    ui.input_selectize(
+        "selected_pitch",
+        "Select a Pitch Type:",
+        choices=[],
+        multiple=False,
+        selected=None
+    )
+
+    @reactive.effect
+    def _():
+        choices = ["All"] + filtered_df()["pitch_name"].unique().tolist()
+        ui.update_selectize(
+            "selected_pitch",
+            choices=choices,
+            selected=None,
+            server=True,
+        )
+
 
 with ui.layout_column_wrap(fill=False):
     with ui.value_box(showcase=icon_svg("earlybirds")):
@@ -35,21 +53,21 @@ with ui.layout_column_wrap(fill=False):
 
         @render.text
         def count():
-            return filtered_df().shape[0]
+            return filtered_by_pitch_name_df().shape[0]
 
     with ui.value_box(showcase=icon_svg("ruler-horizontal")):
         "Average Pitch Velocity"
 
         @render.text
         def bill_length():
-            return f"{filtered_df()['release_speed'].mean():.1f} mph"
+            return f"{filtered_by_pitch_name_df()['release_speed'].mean():.1f} mph"
 
     with ui.value_box(showcase=icon_svg("ruler-vertical")):
         "Average Days Between Games"
 
         @render.text
         def bill_depth():
-            return f"{filtered_df()['pitcher_days_since_prev_game'].mean():.1f} days"
+            return f"{filtered_by_pitch_name_df()['pitcher_days_since_prev_game'].mean():.1f} days"
 
 
 with ui.layout_columns():
@@ -58,9 +76,9 @@ with ui.layout_columns():
 
         @render_plotly
         def movement_scatter():
-            pfx_x_inches = filtered_df()["pfx_x"] * 12
-            pfx_z_inches = filtered_df()["pfx_z"] * 12
-            fig = px.scatter(filtered_df(), x = pfx_x_inches, y=pfx_z_inches,
+            pfx_x_inches = filtered_by_pitch_name_df()["pfx_x"] * 12
+            pfx_z_inches = filtered_by_pitch_name_df()["pfx_z"] * 12
+            fig = px.scatter(filtered_by_pitch_name_df(), x = pfx_x_inches, y=pfx_z_inches,
                             color="pitch_name")
             # fig = px.scatter(x = [1,2,23,4,5], y = [1,2,3,4,5])
             return fig
@@ -86,11 +104,21 @@ def filtered_df():
     last_name = input.selected_pitcher().split()[0].lower().replace(',', '')
     player_id = playerid_lookup(last_name, first_name)["key_mlbam"][0]
     data = statcast_pitcher(str(input.date_range()[0]), str(input.date_range()[1]), player_id = player_id)
+
     return data
 
 @reactive.calc
+def filtered_by_pitch_name_df():    
+    if input.selected_pitch() == "All":
+        pitch_name_df = filtered_df()
+    else:    
+        pitch_name_df = filtered_df().loc[filtered_df()["pitch_name"] == input.selected_pitch()]
+
+    return pitch_name_df
+
+@reactive.calc
 def strike_zone_df():
-    temp_df = filtered_df()
+    temp_df = filtered_by_pitch_name_df()
     k_zone_df = temp_df.loc[temp_df["zone"] <= 9]
     return k_zone_df
 
