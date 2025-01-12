@@ -213,6 +213,16 @@ def server(input: Inputs, output: Outputs, session: Session):
                         y = "launch_angle",
                         color="pitch_name",
                         facet_col="p_throws",
+                        custom_data=["hit_distance_sc", "pitcher"],
+        )
+        fig.update_traces(
+            hovertemplate =
+                "Launch Speed: %{x:.0f} mph<br>" +
+                "Launch Angle: %{y:.0f} degrees<br>" +
+                "Hit Distance: %{customdata[0]} ft</b><br>" +
+                "Pitcher ID: %{customdata[1]}</b><br><br>" +
+                "<extra></extra>",
+        mode='markers',
         )
         fig.update_traces(marker_size=10)
         # fig.add_trace
