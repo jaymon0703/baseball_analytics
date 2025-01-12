@@ -7,7 +7,7 @@ from shinywidgets import output_widget, render_plotly
 # Import data from shared.py
 from shared import app_dir, ls_pitchers_2024, ls_batters_2024, create_count_matrix
 
-from pybaseball import  playerid_lookup, statcast_pitcher, statcast_batter, cache
+from pybaseball import  playerid_lookup, playerid_reverse_lookup, statcast_pitcher, statcast_batter, cache
 cache.enable()
 
 app_ui = ui.page_navbar(
@@ -108,8 +108,8 @@ app_ui = ui.page_navbar(
         ui.row(
             ui.layout_columns(
                 ui.card(
-                    ui.card_header("Pitch Movement Scatter Plot"),
-                    output_widget("movement_scatter_hitter"),
+                    ui.card_header("Home Runs - Launch Speed, Angle and Pitch Type"),
+                    output_widget("home_run_scatter"),
                     full_screen=True,
                 ),
                 ui.card(
@@ -133,6 +133,8 @@ app_ui = ui.page_navbar(
 )
 
 def server(input: Inputs, output: Outputs, session: Session):
+    
+    # Reactive dataframes for pitcher and hitter
     @reactive.calc
     def filtered_df():
         first_name = input.selected_pitcher().rsplit(",")[1].lower().strip()
@@ -153,44 +155,18 @@ def server(input: Inputs, output: Outputs, session: Session):
 
         return data
     
-    # @reactive.calc
-    # def filtered_by_pitch_name_df():    
-    #     if input.selected_pitch() == "All":
-    #         pitch_name_df = filtered_df()
-    #     else:    
-    #         pitch_name_df = filtered_df().loc[filtered_df()["pitch_name"] == input.selected_pitch()]
-
-    #     return pitch_name_df
-    
-    # @reactive.calc
-    # def strike_zone_df():
-    #     temp_df = filtered_by_pitch_name_df()
-    #     k_zone_df = temp_df.loc[temp_df["zone"] <= 9]
-    #     return k_zone_df
-    
+    # Pitcher server functions
     @render.ui
     def count():
         return filtered_df().shape[0]
-    
-    @render.ui
-    def count_hitter():
-        return hitter_filtered_df().shape[0]
 
     @render.ui
     def pitch_velo():
         return f"{filtered_df()['release_speed'].mean():.1f} mph"
-    
-    @render.ui
-    def hit_velo():
-        return f"{hitter_filtered_df()['release_speed'].mean():.1f} mph"
 
     @render.ui
     def days_between_games():
         return f"{filtered_df()['pitcher_days_since_prev_game'].mean():.1f} days"
-    
-    @render.ui
-    def average_hit_distance():
-        return f"{hitter_filtered_df()['hit_distance_sc'].mean():.1f} feet"
 
     @render_plotly
     def movement_scatter():
@@ -215,6 +191,32 @@ def server(input: Inputs, output: Outputs, session: Session):
             filters=True,
             width="100%",
         )
+    
+    # Hitter server functions
+    @render.ui
+    def count_hitter():
+        return hitter_filtered_df().shape[0]
+    
+    @render.ui
+    def hit_velo():
+        return f"{hitter_filtered_df()['release_speed'].mean():.1f} mph"
+    
+    @render.ui
+    def average_hit_distance():
+        return f"{hitter_filtered_df()['hit_distance_sc'].mean():.1f} feet"
+    
+    @render_plotly
+    def home_run_scatter():
+
+        fig = px.scatter(hitter_filtered_df()[hitter_filtered_df()["events"] == "home_run"], 
+                        x = "launch_speed", 
+                        y = "launch_angle",
+                        color="pitch_name",
+                        facet_col="p_throws",
+        )
+        fig.update_traces(marker_size=10)
+        # fig.add_trace
+        return fig
     
     @render.data_frame
     def table_hitter():
