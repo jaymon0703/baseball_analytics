@@ -1,125 +1,228 @@
 import seaborn as sns
 from faicons import icon_svg
 import plotly.express as px
-from shinywidgets import render_plotly
+from shiny import App, Inputs, Outputs, Session, reactive, render, ui
+from shinywidgets import output_widget, render_plotly
 
 # Import data from shared.py
-from shared import app_dir, ls_pitchers_2024, create_count_matrix
+from shared import app_dir, ls_pitchers_2024, ls_batters_2024, create_count_matrix
 
-from shiny import reactive
-from shiny.express import input, render, ui
-
-from pybaseball import  playerid_lookup, statcast_pitcher, cache
+from pybaseball import  playerid_lookup, statcast_pitcher, statcast_batter, cache
 cache.enable()
 
-ui.page_opts(title="Baseball Analytics Dashboard - 2024", fillable=True)
-
-
-with ui.sidebar(title="Filter controls", width=300):
-    # ui.input_slider("release_speed", "Release Speed", 0, 110, 110)
-
-    ui.input_selectize(
-        "selected_pitcher",
-        "Select a Pitcher:",
-        ls_pitchers_2024,
-        multiple=False,
-        selected=None
+app_ui = ui.page_navbar(
+    ui.nav_panel(
+        "Pitcher Report",
+        ui.page_sidebar(
+            ui.sidebar(
+            ui.input_selectize("selected_pitcher", "Select a Pitcher:", ls_pitchers_2024, multiple=False, selected="Darvish, Yu"),
+            ui.input_date_range("date_range", "Date Range", start="2024-01-01", end="2024-12-31"),
+            width = 275
+        #     ui.input_selectize(
+        #     "selected_pitch",
+        #     "Select a Pitch Type:",
+        #     choices=[],
+        #     multiple=False,
+        #     selected=None
+        # ),
+        ),
+        ui.layout_column_wrap(
+            ui.value_box(
+                "Number of Pitches",
+                ui.output_ui("count"),
+                showcase=icon_svg("baseball"),
+            ),
+            ui.value_box(
+                "Average Pitch Velocity",
+                ui.output_ui("pitch_velo"),
+                showcase=icon_svg("divide"),
+            ),
+            ui.value_box(
+                "Average Days Between Games",
+                ui.output_ui("days_between_games"),
+                showcase=icon_svg("ruler"),
+            ),
+            fill=False,
+        ),
+        ui.row(
+            ui.layout_columns(
+                ui.card(
+                    ui.card_header("Pitch Movement Scatter Plot"),
+                    output_widget("movement_scatter"),
+                    full_screen=True,
+                ),
+                ui.card(
+                    ui.card_header("Ball Position  Over Plate Scatter Plot"),
+                    output_widget("home_plate_scatter"),
+                    full_screen=True,
+                ),
+            ),
+        ),
+        ui.row(
+            ui.layout_columns(
+                ui.card(
+                    ui.card_header("Pitch Data Table"),
+                    ui.output_data_frame("table"),
+                    full_screen=True,
+                ),
+            )
+        ),
+        ui.include_css(app_dir / "styles.css"),
+        # title="Baseball Analytics Dashboard - 2024",
+        fillable=True,
+        )
+    ),
+    ui.nav_panel(
+        "Hitter Report",
+        ui.page_sidebar(
+            ui.sidebar(
+            ui.input_selectize("selected_hitter", "Select a Hitter:", ls_batters_2024, multiple=False, selected="Ohtani, Shohei"),
+            ui.input_date_range("date_range_hitter", "Date Range", start="2024-01-01", end="2024-12-31"),
+            width = 275
+        #     ui.input_selectize(
+        #     "selected_pitch",
+        #     "Select a Pitch Type:",
+        #     choices=[],
+        #     multiple=False,
+        #     selected=None
+        # ),
+        ),
+        ui.layout_column_wrap(
+            ui.value_box(
+                "Number of Hits (including outs)",
+                ui.output_ui("count_hitter"),
+                showcase=icon_svg("baseball-bat-ball"),
+            ),
+            ui.value_box(
+                "Average Hit Velocity",
+                ui.output_ui("hit_velo"),
+                showcase=icon_svg("divide"),
+            ),
+            ui.value_box(
+                "Average Hit Distance",
+                ui.output_ui("average_hit_distance"),
+                showcase=icon_svg("ruler"),
+            ),
+            fill=False,
+        ),
+        ui.row(
+            ui.layout_columns(
+                ui.card(
+                    ui.card_header("Pitch Movement Scatter Plot"),
+                    output_widget("movement_scatter_hitter"),
+                    full_screen=True,
+                ),
+                ui.card(
+                    ui.card_header("Ball Position  Over Plate Scatter Plot"),
+                    output_widget("home_plate_scatter_hitter"),
+                    full_screen=True,
+                ),
+            ),
+        ),
+        ui.row(
+            ui.layout_columns(
+                ui.card(
+                    ui.card_header("Hit Data Table"),
+                    ui.output_data_frame("table_hitter"),
+                    full_screen=True,
+                ),
+            )
+        ),
+        )
     )
+)
 
-    ui.input_date_range("date_range", "Date Range", start="2024-01-01", end="2024-12-31")
+def server(input: Inputs, output: Outputs, session: Session):
+    @reactive.calc
+    def filtered_df():
+        first_name = input.selected_pitcher().rsplit(",")[1].lower().strip()
+        last_name = input.selected_pitcher().rsplit(",")[0].lower().replace(',', '')
+        player_id = playerid_lookup(last_name, first_name)["key_mlbam"][0]
+        data = statcast_pitcher(str(input.date_range()[0]), str(input.date_range()[1]), player_id = player_id)
+        data = data.dropna(subset=["pitch_name", "release_speed", "pfx_x", "pfx_z", "plate_x", "plate_z", "zone"])
 
-    ui.input_selectize(
-        "selected_pitch",
-        "Select a Pitch Type:",
-        choices=[],
-        multiple=False,
-        selected=None
-    )
+        return data
+    
+    @reactive.calc
+    def hitter_filtered_df():
+        first_name = input.selected_hitter().rsplit(",")[1].lower().strip()
+        last_name = input.selected_hitter().rsplit(",")[0].lower().replace(',', '')
+        player_id = playerid_lookup(last_name, first_name)["key_mlbam"][0]
+        data = statcast_batter(str(input.date_range()[0]), str(input.date_range()[1]), player_id = player_id)
+        data = data.dropna(subset=["pitch_name", "launch_speed", "hit_distance_sc", "plate_x", "plate_z", "zone"])
 
-    @reactive.effect
-    def _():
-        choices = ["All"] + filtered_df()["pitch_name"].unique().tolist()
-        ui.update_selectize(
-            "selected_pitch",
-            choices=choices,
-            selected=None,
-            server=True,
+        return data
+    
+    # @reactive.calc
+    # def filtered_by_pitch_name_df():    
+    #     if input.selected_pitch() == "All":
+    #         pitch_name_df = filtered_df()
+    #     else:    
+    #         pitch_name_df = filtered_df().loc[filtered_df()["pitch_name"] == input.selected_pitch()]
+
+    #     return pitch_name_df
+    
+    # @reactive.calc
+    # def strike_zone_df():
+    #     temp_df = filtered_by_pitch_name_df()
+    #     k_zone_df = temp_df.loc[temp_df["zone"] <= 9]
+    #     return k_zone_df
+    
+    @render.ui
+    def count():
+        return filtered_df().shape[0]
+    
+    @render.ui
+    def count_hitter():
+        return hitter_filtered_df().shape[0]
+
+    @render.ui
+    def pitch_velo():
+        return f"{filtered_df()['release_speed'].mean():.1f} mph"
+    
+    @render.ui
+    def hit_velo():
+        return f"{hitter_filtered_df()['release_speed'].mean():.1f} mph"
+
+    @render.ui
+    def days_between_games():
+        return f"{filtered_df()['pitcher_days_since_prev_game'].mean():.1f} days"
+    
+    @render.ui
+    def average_hit_distance():
+        return f"{hitter_filtered_df()['hit_distance_sc'].mean():.1f} feet"
+
+    @render_plotly
+    def movement_scatter():
+        fig = px.scatter(filtered_df(), 
+                        x = filtered_df()["pfx_x"] * 12, 
+                        y = filtered_df()["pfx_z"] * 12,
+                        color="pitch_name")
+        return fig
+    
+    @render_plotly
+    def home_plate_scatter():
+        fig = px.scatter(filtered_df(), 
+                        x = filtered_df()["plate_x"] * 12, 
+                        y = filtered_df()["plate_z"] * 12,
+                        color="pitch_name")
+        return fig
+
+    @render.data_frame
+    def table():
+        return render.DataTable(
+            filtered_df(),
+            filters=True,
+            width="100%",
+        )
+    
+    @render.data_frame
+    def table_hitter():
+        return render.DataTable(
+            hitter_filtered_df(),
+            filters=True,
+            width="100%",
         )
 
 
-with ui.layout_column_wrap(fill=False):
-    with ui.value_box(showcase=icon_svg("earlybirds")):
-        "Number of Pitches"
-
-        @render.text
-        def count():
-            return filtered_by_pitch_name_df().shape[0]
-
-    with ui.value_box(showcase=icon_svg("ruler-horizontal")):
-        "Average Pitch Velocity"
-
-        @render.text
-        def bill_length():
-            return f"{filtered_by_pitch_name_df()['release_speed'].mean():.1f} mph"
-
-    with ui.value_box(showcase=icon_svg("ruler-vertical")):
-        "Average Days Between Games"
-
-        @render.text
-        def bill_depth():
-            return f"{filtered_by_pitch_name_df()['pitcher_days_since_prev_game'].mean():.1f} days"
-
-
-with ui.layout_columns():
-    with ui.card(full_screen=True):
-        ui.card_header("Pitch Movement Scatter Plot")
-
-        @render_plotly
-        def movement_scatter():
-            pfx_x_inches = filtered_by_pitch_name_df()["pfx_x"] * 12
-            pfx_z_inches = filtered_by_pitch_name_df()["pfx_z"] * 12
-            fig = px.scatter(filtered_by_pitch_name_df(), x = pfx_x_inches, y=pfx_z_inches,
-                            color="pitch_name")
-            # fig = px.scatter(x = [1,2,23,4,5], y = [1,2,3,4,5])
-            return fig
-
-    with ui.card(full_screen=True):
-        ui.card_header("Strike Zone Heat Map")
-
-        @render_plotly
-        def heatmap():
-            fig = px.imshow(create_count_matrix(strike_zone_df()),
-                            color_continuous_scale='RdBu_r')
-            fig.update_xaxes(showticklabels=False)
-            fig.update_yaxes(showticklabels=False)
-            return fig
-
-
-ui.include_css(app_dir / "styles.css")
-
-
-@reactive.calc
-def filtered_df():
-    first_name = input.selected_pitcher().split()[1].lower()
-    last_name = input.selected_pitcher().split()[0].lower().replace(',', '')
-    player_id = playerid_lookup(last_name, first_name)["key_mlbam"][0]
-    data = statcast_pitcher(str(input.date_range()[0]), str(input.date_range()[1]), player_id = player_id)
-
-    return data
-
-@reactive.calc
-def filtered_by_pitch_name_df():    
-    if input.selected_pitch() == "All":
-        pitch_name_df = filtered_df()
-    else:    
-        pitch_name_df = filtered_df().loc[filtered_df()["pitch_name"] == input.selected_pitch()]
-
-    return pitch_name_df
-
-@reactive.calc
-def strike_zone_df():
-    temp_df = filtered_by_pitch_name_df()
-    k_zone_df = temp_df.loc[temp_df["zone"] <= 9]
-    return k_zone_df
-
-
+app = App(app_ui, server)

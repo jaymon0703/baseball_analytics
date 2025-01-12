@@ -6,6 +6,9 @@ app_dir = Path(__file__).parent
 df_pitchers_2024 = pd.read_csv(app_dir / "2024_pitchers.csv", header=None)
 ls_pitchers_2024 = df_pitchers_2024[0].tolist()
 
+df_batters_2024 = pd.read_csv(app_dir / "2024_batters.csv", header=None)
+ls_batters_2024 = df_batters_2024[0].tolist()
+
 def create_count_matrix(df):
     """
     Converts a list of numbers (1-9) into a 3x3 count matrix.
